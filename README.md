@@ -1,3 +1,14 @@
+> **🔱 Personal fork — not affiliated with Anthropic.**
+>
+> This is a personal fork of [`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official) maintained by [@fateLiang](https://github.com/fateLiang) for personal Claude Code use. It is **not** an official Anthropic distribution.
+>
+> **Differences from upstream `main`:**
+> - `external_plugins/telegram` (bumped to `0.0.7`) — adds forward / reply attribution metadata and inline-hyperlink (`text_link`) URL surfacing on inbound messages. Upstream PR: [anthropics/claude-plugins-official#1657](https://github.com/anthropics/claude-plugins-official/pull/1657).
+>
+> Use at your own risk. This fork does not represent Anthropic's position.
+
+---
+
 # Claude Code Plugins Directory
 
 A curated directory of high-quality plugins for Claude Code.
