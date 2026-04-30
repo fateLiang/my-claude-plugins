@@ -1,11 +1,27 @@
-> **🔱 Personal fork — not affiliated with Anthropic.**
+# ⚠️ UNOFFICIAL PERSONAL FORK — NOT ANTHROPIC
+
+> **This repository is NOT affiliated with, endorsed by, or sponsored by Anthropic, PBC.**
 >
-> This is a personal fork of [`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official) maintained by [@fateLiang](https://github.com/fateLiang) for personal Claude Code use. It is **not** an official Anthropic distribution.
+> It is a **personal** fork of [`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official) maintained by [@fateLiang](https://github.com/fateLiang) **for the maintainer's own use only**. No support, no warranty, no community distribution intent.
 >
-> **Differences from upstream `main`:**
-> - `external_plugins/telegram` (bumped to `0.0.7`) — adds forward / reply attribution metadata and inline-hyperlink (`text_link`) URL surfacing on inbound messages. Upstream PR: [anthropics/claude-plugins-official#1657](https://github.com/anthropics/claude-plugins-official/pull/1657).
->
-> Use at your own risk. This fork does not represent Anthropic's position.
+> **Other users are not the audience.** If you found this repository through search, GitHub forks-network, or a closed pull-request reference: this is not an official source, not curated for general use, and may diverge from upstream at any time without notice. **Please use the official upstream marketplace instead** → `anthropics/claude-plugins-official`.
+
+## Trademark notice
+
+"Claude," "Claude Code," and "Anthropic" are trademarks of Anthropic, PBC. This fork uses these names solely in a descriptive sense — to identify the upstream project being forked and the runtime tool the plugins target. **No trademark license is granted, claimed, or implied.** All trademark rights belong to their respective holders. If a representative of Anthropic believes this fork's existence creates confusion or violates trademark guidelines, please open an issue or contact the maintainer directly and the offending content will be addressed promptly.
+
+## Why this fork exists
+
+Two small additions were prototyped against `external_plugins/telegram` for the maintainer's own Claude Code workflow:
+
+- forward / reply attribution metadata on inbound messages
+- inline-hyperlink (`text_link`) URL surfacing so URLs hidden behind link labels survive into the agent's view
+
+`plugin.json` is bumped to `0.0.7` to mark divergence. The patches were proposed upstream in [PR #1657](https://github.com/anthropics/claude-plugins-official/pull/1657) but the upstream project does not accept external contributions, so the changes live here.
+
+## Use at your own risk
+
+If you choose to use this fork anyway despite the warnings above, you accept all risk. The maintainer makes no representations about correctness, security, or longevity. The fork may be deleted, made private, or reset at any time.
 
 ---
 
