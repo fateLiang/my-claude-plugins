@@ -1,10 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-plugins-official",
-  "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+  "name": "my-claude-plugins",
+  "description": "Personal fork of anthropics/claude-plugins-official with a patched telegram plugin (forward/reply attribution + text_link URL surfacing). Not Anthropic-managed.",
   "owner": {
-    "name": "Anthropic",
-    "email": "support@anthropic.com"
+    "name": "fateLiang"
   },
   "plugins": [
     {
