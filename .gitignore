@@ -1,2 +1,2 @@
 *.DS_Store
-.claude/
+.claude/external_plugins/*/node_modules/

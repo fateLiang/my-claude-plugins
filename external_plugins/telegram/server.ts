@@ -28,6 +28,23 @@ const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const ENV_FILE = join(STATE_DIR, '.env')
 
+// --- Poller death diagnosis (added 2026-05-29 for 賈維斯 disconnect) -----------
+// Tee every stderr line + the exit code into $STATE_DIR/poller.log so a poller
+// that dies leaves evidence (409 / polling errors / unhandled rejection /
+// "shutting down" / exit code) instead of vanishing silently. The MCP transport
+// jsonl only captures Claude's client side, not the bun process's own stderr.
+// NOTE: a hard SIGKILL (137) or SEGV (139) can't be caught here (no exit event) —
+// in that case poller.log just stops mid-line + no "exit" entry, which itself
+// signals an abrupt kill; the external watchdog records the system context.
+const POLLER_LOG = join(STATE_DIR, 'poller.log')
+const _origStderrWrite = process.stderr.write.bind(process.stderr)
+process.stderr.write = ((chunk: any, ...rest: any[]) => {
+  try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] ${typeof chunk === 'string' ? chunk : chunk?.toString?.() ?? ''}`, { flag: 'a' }) } catch {}
+  return (_origStderrWrite as any)(chunk, ...rest)
+}) as any
+try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] === poller start pid=${process.pid} ===\n`, { flag: 'a' }) } catch {}
+process.on('exit', (code) => { try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] === process exit code=${code} ===\n`, { flag: 'a' }) } catch {} })
+
 // Load ~/.claude/channels/telegram/.env into process.env. Real env wins.
 // Plugin-spawned servers don't get an env block — this is where the token lives.
 try {
