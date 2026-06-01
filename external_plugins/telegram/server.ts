@@ -42,7 +42,21 @@ process.stderr.write = ((chunk: any, ...rest: any[]) => {
   try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] ${typeof chunk === 'string' ? chunk : chunk?.toString?.() ?? ''}`, { flag: 'a' }) } catch {}
   return (_origStderrWrite as any)(chunk, ...rest)
 }) as any
-try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] === poller start pid=${process.pid} ===\n`, { flag: 'a' }) } catch {}
+try {
+  // Walk up the ancestry to find the real spawner (immediate parent is always
+  // the `bun run … start` wrapper; the grandparent+ is the claude session / cron).
+  const ancestry: string[] = []
+  let cur = process.ppid
+  for (let i = 0; i < 5 && cur > 1; i++) {
+    let cmd = ''
+    try { cmd = readFileSync(`/proc/${cur}/cmdline`, 'utf8').replace(/\0/g, ' ').trim().slice(0, 120) } catch {}
+    ancestry.push(`${cur}:${cmd}`)
+    let ppid = 0
+    try { ppid = parseInt((readFileSync(`/proc/${cur}/status`, 'utf8').match(/^PPid:\s*(\d+)/m) || [])[1] || '0') } catch {}
+    cur = ppid
+  }
+  writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] === poller start pid=${process.pid} ancestry=${ancestry.map(a => `[${a}]`).join('→')} ===\n`, { flag: 'a' })
+} catch {}
 process.on('exit', (code) => { try { writeFileSync(POLLER_LOG, `[${new Date().toISOString()}] === process exit code=${code} ===\n`, { flag: 'a' }) } catch {} })
 
 // Load ~/.claude/channels/telegram/.env into process.env. Real env wins.
