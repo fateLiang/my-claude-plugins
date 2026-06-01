@@ -4,6 +4,8 @@ Connect a Telegram bot to your Claude Code with an MCP server.
 
 The MCP server logs into Telegram as a bot and provides tools to Claude to reply, react, or edit messages. When you message the bot, the server forwards the message to your Claude Code session.
 
+> **Unofficial fork** (`telegram@my-claude-plugins`, repo [`fateLiang/my-claude-plugins`](https://github.com/fateLiang/my-claude-plugins)). Patched on top of Anthropic's official telegram plugin with: forward/reply attribution in the `<channel>` notification, and `text_link` URL surfacing. Not Anthropic-managed. Because it's not on the official approved-channels allowlist, it loads via `--dangerously-load-development-channels` (see step 4).
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) — the MCP server runs on Bun. Install with `curl -fsSL https://bun.sh/install | bash`.
@@ -24,9 +26,10 @@ BotFather replies with a token that looks like `123456789:AAHfiqksKZ8...` — th
 
 These are Claude Code commands — run `claude` to start a session first.
 
-Install the plugin:
+Add this fork's marketplace, then install the plugin:
 ```
-/plugin install telegram@claude-plugins-official
+/plugin marketplace add fateLiang/my-claude-plugins
+/plugin install telegram@my-claude-plugins
 /reload-plugins
 ```
 
@@ -45,12 +48,19 @@ Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can a
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --channels plugin:telegram@claude-plugins-official
+claude --dangerously-load-development-channels plugin:telegram@my-claude-plugins
 ```
+
+> **Why `--dangerously-load-development-channels` and not `--channels`?** Plain `--channels` only loads channel plugins that are on the approved-channels allowlist (`allowedChannelPlugins` in managed/policy settings, or the built-in default — which lists Anthropic's official telegram, not this fork). A personal fork is rejected with *"not on the approved channels allowlist"*. `--dangerously-load-development-channels` is the supported mechanism for loading a non-allowlisted channel — that's the right path for this fork, not a workaround.
+>
+> If you'd rather use plain `--channels`, add the fork to the allowlist in managed/policy settings, then launch with `--channels plugin:telegram@my-claude-plugins`:
+> ```json
+> { "allowedChannelPlugins": [ { "plugin": "telegram", "marketplace": "my-claude-plugins" } ] }
+> ```
 
 **5. Pair.**
 
-With Claude Code running from the previous step, DM your bot on Telegram — it replies with a 6-character pairing code. If the bot doesn't respond, make sure your session is running with `--channels`. In your Claude Code session:
+With Claude Code running from the previous step, DM your bot on Telegram — it replies with a 6-character pairing code. If the bot doesn't respond, make sure your session is running with the channel flag from step 4. In your Claude Code session:
 
 ```
 /telegram:access pair <code>
