@@ -101,11 +101,34 @@ writeFileSync(PID_FILE, String(process.pid))
 
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
+//
+// ⚠️ EPIPE self-devour guard (2026-06-12, sofir incident): once the host (claude)
+// closes our stdio pipes — orphaned poller after a session dies, duplicate session
+// replaced us, etc. — EVERY write throws EPIPE, and a handler that responds to the
+// error by writing to stderr throws EPIPE again: an infinite loop that flooded
+// poller.log at ~30GB/min. A broken pipe means the host has abandoned this process,
+// so the only correct move is a quiet exit. Note: Bun's EPIPE Error doesn't always
+// carry .code, so match the message too. A generic error-storm circuit breaker
+// (>50 uncaught errors / 10s) backstops any other infinite error loop.
+function isEpipe(err: unknown): boolean {
+  if (!err) return false
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'EPIPE' || String(err).includes('EPIPE')
+}
+let stormCount = 0
+let stormWindowStart = Date.now()
+function stormTrip(): boolean {
+  const now = Date.now()
+  if (now - stormWindowStart > 10_000) { stormWindowStart = now; stormCount = 0 }
+  return ++stormCount > 50
+}
 process.on('unhandledRejection', err => {
-  process.stderr.write(`telegram channel: unhandled rejection: ${err}\n`)
+  if (isEpipe(err) || stormTrip()) process.exit(0)
+  try { process.stderr.write(`telegram channel: unhandled rejection: ${err}\n`) } catch { process.exit(0) }
 })
 process.on('uncaughtException', err => {
-  process.stderr.write(`telegram channel: uncaught exception: ${err}\n`)
+  if (isEpipe(err) || stormTrip()) process.exit(0)
+  try { process.stderr.write(`telegram channel: uncaught exception: ${err}\n`) } catch { process.exit(0) }
 })
 
 // Permission-reply spec from anthropics/claude-cli-internal
