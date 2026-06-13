@@ -452,6 +452,120 @@ const mcp = new Server(
 // Stores full permission details for "See more" expansion keyed by request_id.
 const pendingPermissions = new Map<string, { tool_name: string; description: string; input_preview: string }>()
 
+// ── ask_decision（hades 作者 / 奇門子 審+合，2026-06-13）─────────────────────────
+// 讓 agent 把「多選決策」丟給使用者的 Telegram、他點按鈕回答。非阻塞：tool 立刻返回，使用者點選後答案
+// 以一則 inbound（notifications/claude/channel）surface 回「本 session」——plugin↔agent 是 1:1、不碰 pangu
+// bus、無跨 agent routing。session-down：Telegram getUpdates offset buffer(~24h) 重啟後補送 callback；
+// pendingDecisions persist 到 STATE_DIR 檔，重啟後仍能驗證/格式化 + answered 去重（at-least-once、once-only）。
+const DECISIONS_FILE = join(STATE_DIR, 'pending-decisions.json')
+// answered = Robert 點了（防雙 tap）；surfaced = agent 真的收到答案（notification 成功）。拆兩個是為了
+// loss-proof：notification 失敗(罕見 transport hiccup)時 answered=true 但 surfaced=false → startup 補送
+//（at-least-once，loss 比 dup 糟——全 session 投遞原則）。chosenIdx 記下選了哪個，供 startup 重送。
+type PendingDecision = { request_id: string; question: string; options: string[]; chat_id: string; answered: boolean; surfaced: boolean; chosenIdx?: number; ts: number }
+let pendingDecisions: Record<string, PendingDecision> = (() => {
+  try { return JSON.parse(readFileSync(DECISIONS_FILE, 'utf8')) } catch { return {} }
+})()
+function savePendingDecisions(): void {
+  try { writeFileSync(DECISIONS_FILE, JSON.stringify(pendingDecisions), { mode: 0o600 }) }
+  catch (e) { process.stderr.write(`ask_decision: persist failed: ${(e as Error).message}\n`) }
+}
+// request_id：5 碼、a-z 去掉 l（避 1/l 混淆）＝同 perm callback 的 [a-km-z]{5}、不可猜
+function newDecisionId(): string {
+  const alpha = 'abcdefghijkmnopqrstuvwxyz', b = randomBytes(5)
+  let s = ''; for (let i = 0; i < 5; i++) s += alpha[b[i] % alpha.length]; return s
+}
+// 去控制字元(0x00-0x1f)+DEL→空格、收斂空白、截長（防選項/問題字串破壞選單或注入使用者的選單）
+function sanitizeText(s: unknown, max: number): string {
+  return String(s ?? '').replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+}
+// per-session rate-limit（這 plugin = 單一 agent）：60s 內最多 N 次 ask_decision，別洗使用者
+const decisionAsks: number[] = []
+const DECISION_WINDOW_MS = 60_000, DECISION_MAX_PER_WINDOW = 5
+function decisionRateOk(): boolean {
+  const now = Date.now()
+  while (decisionAsks.length && decisionAsks[0] < now - DECISION_WINDOW_MS) decisionAsks.shift()
+  if (decisionAsks.length >= DECISION_MAX_PER_WINDOW) return false
+  decisionAsks.push(now); return true
+}
+async function handleAskDecision(args: Record<string, unknown>) {
+  const question = sanitizeText(args.question, 300)
+  const rawOpts = Array.isArray(args.options) ? args.options : []
+  const options = rawOpts.map((o: unknown) => sanitizeText(o, 60)).filter(Boolean).slice(0, 6)
+  if (!question) throw new Error('question required')
+  if (options.length < 2) throw new Error('need ≥2 options')
+  if (!decisionRateOk()) throw new Error(`rate limit: 每 60s 最多 ${DECISION_MAX_PER_WINDOW} 次決策請求（避免洗使用者）`)
+  const access = loadAccess()
+  const targets: string[] = args.chat_id ? [String(args.chat_id)] : access.allowFrom
+  if (!targets.length) throw new Error('no allowlisted DM to ask')
+  if (args.chat_id && !access.allowFrom.includes(String(args.chat_id))) throw new Error('chat_id not allowlisted')
+  const request_id = newDecisionId()
+  pendingDecisions[request_id] = { request_id, question, options, chat_id: targets[0], answered: false, surfaced: false, ts: Date.now() }
+  savePendingDecisions()
+  const keyboard = new InlineKeyboard()
+  options.forEach((label, idx) => { keyboard.text(label, `dec:${request_id}:${idx}`); if (idx % 2 === 1) keyboard.row() })
+  const text = `🤔 需要你決策（不急，有空再點）\n${question}`
+  for (const chat_id of targets) {
+    void bot.api.sendMessage(chat_id, text, { reply_markup: keyboard }).catch((e: any) =>
+      process.stderr.write(`ask_decision send to ${chat_id} failed: ${e}\n`))
+  }
+  return { content: [{ type: 'text', text: `已送出決策（request_id=${request_id}、${options.length} 選項）。非阻塞——去做別的，使用者點選後答案會以 inbound 回來（帶 decision_request_id=${request_id}）。` }] }
+}
+function handleListPendingDecisions() {
+  const pend = Object.values(pendingDecisions).filter(d => !d.answered)
+  const text = pend.length
+    ? pend.map(d => `• ${d.request_id}: ${d.question} [${d.options.join(' / ')}]`).join('\n')
+    : '（無待回覆決策）'
+  return { content: [{ type: 'text', text }] }
+}
+// 決策 callback（dec:<id>:<idx>）——跟現有 perm: callback 並列。回 true=已處理、false=非 dec: 交回 perm 邏輯。
+async function handleDecisionCallback(ctx: Context): Promise<boolean> {
+  const data: string = (ctx.callbackQuery as any)?.data ?? ''
+  const m = /^dec:([a-km-z]{5}):(\d+)$/.exec(data)
+  if (!m) return false
+  const senderId = String(ctx.from?.id ?? '')
+  if (!loadAccess().allowFrom.includes(senderId)) { await ctx.answerCallbackQuery({ text: 'Not authorized.' }).catch(() => {}); return true }
+  const [, request_id, idxStr] = m
+  const d = pendingDecisions[request_id]
+  if (!d) { await ctx.answerCallbackQuery({ text: '此決策已失效或不存在。' }).catch(() => {}); return true }
+  if (d.answered) { await ctx.answerCallbackQuery({ text: '這個決策已經回答過了。' }).catch(() => {}); return true }
+  const idx = Number(idxStr)
+  if (!(idx >= 0 && idx < d.options.length)) { await ctx.answerCallbackQuery({ text: '選項無效。' }).catch(() => {}); return true }
+  const chosen = d.options[idx]
+  // once-only：先標 answered + chosenIdx + persist（防並發雙 tap）。surfaced 只在 notification 成功才標。
+  d.answered = true; d.chosenIdx = idx; savePendingDecisions()
+  await ctx.answerCallbackQuery({ text: `已選：${chosen}` }).catch(() => {})
+  await ctx.editMessageText(`🗳 已回覆：${d.question}\n→ ${chosen}`).catch(() => {})
+  await surfaceDecisionAnswer(d) // 成功才標 surfaced；失敗留 false → startup 補送
+  return true
+}
+// surface 答案成一則 inbound 給「本 session」（套件現有 channel 機制、無 pangu bus）。**成功才標 surfaced**——
+// notification 失敗(罕見 transport hiccup)→ surfaced 留 false、下次 startup 補送，避免 loss（loss 比 dup 糟）。
+async function surfaceDecisionAnswer(d: PendingDecision): Promise<void> {
+  if (d.chosenIdx == null || !(d.chosenIdx >= 0 && d.chosenIdx < d.options.length)) return
+  const chosen = d.options[d.chosenIdx]
+  try {
+    await mcp.notification({
+      method: 'notifications/claude/channel',
+      params: {
+        content: `🗳 你先前送出的決策已有回覆：「${d.question}」→ 使用者選了：${chosen}`,
+        meta: {
+          chat_id: d.chat_id,
+          user: 'telegram',
+          user_id: d.chat_id,
+          ts: new Date().toISOString(),
+          decision_request_id: d.request_id,
+          decision_answer: chosen,
+          decision_answer_index: String(d.chosenIdx),
+        },
+      },
+    })
+    d.surfaced = true; savePendingDecisions()
+  } catch (err) {
+    process.stderr.write(`ask_decision: surface answer failed (will retry on next startup): ${err}\n`)
+  }
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 // Receive permission_request from CC → format → send to all allowlisted DMs.
 // Groups are intentionally excluded — the security thread resolution was
 // "single-user mode for official plugins." Anyone in access.allowFrom
@@ -553,6 +667,29 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ['chat_id', 'message_id', 'text'],
       },
+    },
+    {
+      name: 'ask_decision',
+      description:
+        '把一個「多選決策」丟給使用者的 Telegram，讓他點按鈕回答。非阻塞：立刻返回 {request_id}，' +
+        '不要等回覆——你繼續做別的或結束這輪；使用者點選後，答案會以一則 inbound 訊息回到你的 session' +
+        '（meta 帶 decision_request_id 與 decision_answer）。**同一 decision_request_id 只處理一次**' +
+        '（投遞重試可能讓你重複收到同一答案，靠 decision_request_id 去重）。用在「需要使用者拍板才能繼續、' +
+        '但不該你自己亂選」的決策。不要拿來問瑣事；2–6 個清楚互斥的選項最佳。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: '要使用者決定的問題（清楚、單一）。' },
+          options: { type: 'array', items: { type: 'string' }, description: '選項清單（2–6 個、互斥、簡短）。' },
+          chat_id: { type: 'string', description: '可選；預設發給所有 allowlisted DM。指定的話必須在 allowlist。' },
+        },
+        required: ['question', 'options'],
+      },
+    },
+    {
+      name: 'list_pending_decisions',
+      description: '列出已送出、使用者還沒點的決策（request_id + 問題 + 選項）。',
+      inputSchema: { type: 'object', properties: {} },
     },
   ],
 }))
@@ -666,6 +803,10 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const id = typeof edited === 'object' ? edited.message_id : args.message_id
         return { content: [{ type: 'text', text: `edited (id: ${id})` }] }
       }
+      case 'ask_decision':
+        return await handleAskDecision(args)
+      case 'list_pending_decisions':
+        return handleListPendingDecisions()
       default:
         return {
           content: [{ type: 'text', text: `unknown tool: ${req.params.name}` }],
@@ -682,6 +823,19 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 })
 
 await mcp.connect(new StdioServerTransport())
+
+// ask_decision loss-proof：補送「Robert 已點但當時 notification 失敗（surfaced=false）」的決策——session
+// down 時點的 tap 由 Telegram getUpdates buffer 補；notification 當下失敗的由這裡 startup 補（at-least-once）。
+// 另清掉 7 天前已完成（answered+surfaced）的，避免 pending-decisions.json 無限長。
+{
+  const cutoff = Date.now() - 7 * 86_400_000
+  let dirty = false
+  for (const [k, d] of Object.entries(pendingDecisions)) {
+    if (d.answered && !d.surfaced && d.chosenIdx != null) void surfaceDecisionAnswer(d)
+    else if (d.answered && d.surfaced && d.ts < cutoff) { delete pendingDecisions[k]; dirty = true }
+  }
+  if (dirty) savePendingDecisions()
+}
 
 // When Claude Code closes the MCP connection, stdin gets EOF. Without this
 // the bot keeps polling forever as a zombie, holding the token and blocking
@@ -777,6 +931,7 @@ bot.command('status', async ctx => {
 // `perm:allow:<id>`, `perm:deny:<id>`, or `perm:more:<id>`.
 // Security mirrors the text-reply path: allowFrom must contain the sender.
 bot.on('callback_query:data', async ctx => {
+  if (await handleDecisionCallback(ctx)) return // dec:<id>:<idx> → ask_decision；非 dec: 回 false 走原 perm 邏輯
   const data = ctx.callbackQuery.data
   const m = /^perm:(allow|deny|more):([a-km-z]{5})$/.exec(data)
   if (!m) {
