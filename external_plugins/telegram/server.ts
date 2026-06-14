@@ -927,6 +927,18 @@ bot.command('status', async ctx => {
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
 })
 
+// /nudge — 通用「一鍵催代理」：surface 指令給配對的 agent → 它透過 mesh 廣播催促給「它 owner 的 fleet」。
+// 通用、不 hardcode 是誰：套件只送「owner 按了催」的意圖；agent 自己知道 owner + 有 mesh plugin、broadcast 給
+// @<owner>。只配對者可用（handleInbound 內含 gate/access 檢查；非配對→回 pairing 提示，不會誤觸）。
+bot.command('nudge', async ctx => {
+  if (ctx.chat?.type !== 'private') return
+  await handleInbound(
+    ctx,
+    '[/nudge 催代理] 你的 owner 在 Telegram 按了「一鍵催代理」。請立刻透過 mesh（pangu session_send、to "@<你的 owner 帳號>"）廣播一則催促給你 owner 的所有其他 agent，內容例如「🔔 催你——回報一下你現在在做什麼／進度，沒事做就繼續手上的活」。完成後在這裡回報催了幾個 agent。',
+    undefined,
+  )
+})
+
 // Inline-button handler for permission requests. Callback data is
 // `perm:allow:<id>`, `perm:deny:<id>`, or `perm:more:<id>`.
 // Security mirrors the text-reply path: allowFrom must contain the sender.
@@ -1374,6 +1386,7 @@ void (async () => {
               { command: 'start', description: 'Welcome and setup guide' },
               { command: 'help', description: 'What this bot can do' },
               { command: 'status', description: 'Check your pairing status' },
+              { command: 'nudge', description: 'Nudge all your agents — broadcast a prompt to your fleet' },
             ],
             { scope: { type: 'all_private_chats' } },
           ).catch(() => {})
