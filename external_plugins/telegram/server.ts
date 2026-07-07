@@ -438,7 +438,7 @@ const mcp = new Server(
     instructions: [
       'The sender reads Telegram, not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches their chat.',
       '',
-      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path. If the tag has forwarded="true", the user forwarded someone else\'s message — original attribution lives in forward_type (user|hidden_user|chat|channel), forward_from_name / forward_from_chat / forward_from_chat_id / forward_from_id / forward_date / forward_message_id / forward_author / forward_from_username depending on origin type; treat the content as quoted from the forwarded source, not the forwarder\'s own words. If the tag has reply_to_message_id, the sender is replying to another message — reply_to_user / reply_to_username / reply_to_user_id / reply_to_date identify the original author, reply_to_text (≤500 chars) carries the text being replied to, reply_to_attachment_kind + reply_to_attachment_file_id give the file_id of any attachment on the replied-to message (call download_attachment to fetch), reply_to_attachment_name is that attachment\'s original filename (when it has one — documents/audio/video) and reply_to_attachment_caption is the replied-to media message\'s caption (when present), so you can tell which file was referenced without downloading it, and reply_to_forwarded="true" plus reply_to_forward_* fields appear when the replied-to message was itself a forward. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
+      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path; attachment_kind / attachment_name / attachment_mime / attachment_size (bytes) / attachment_duration (seconds, for audio/video/voice) describe it when Telegram supplies them. Message-level: edit_date marks an edited message, media_group_id groups the parts of one album, has_protected_content="true" means forwarding/saving is disabled. If the tag has forwarded="true", the user forwarded someone else\'s message — original attribution lives in forward_type (user|hidden_user|chat|channel), forward_from_name / forward_from_chat / forward_from_chat_id / forward_from_chat_username / forward_from_id / forward_date / forward_message_id / forward_author / forward_from_username depending on origin type; treat the content as quoted from the forwarded source, not the forwarder\'s own words. If the tag has reply_to_message_id, the sender is replying to another message — reply_to_user / reply_to_username / reply_to_user_id / reply_to_date identify the original author, reply_to_text (≤500 chars) carries the text being replied to, reply_to_attachment_kind + reply_to_attachment_file_id give the file_id of any attachment on the replied-to message (call download_attachment to fetch), reply_to_attachment_name is that attachment\'s original filename (when it has one — documents/audio/video), reply_to_attachment_mime / reply_to_attachment_size / reply_to_attachment_duration describe it, and reply_to_attachment_caption is the replied-to media message\'s caption (when present), so you can tell which file was referenced without downloading it, and reply_to_forwarded="true" plus reply_to_forward_* fields appear when the replied-to message was itself a forward. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
       '',
       'reply accepts file paths (files: ["/abs/path.png"]) for attachments. Use react to add emoji reactions, and edit_message for interim progress updates. Edits don\'t trigger push notifications — when a long task completes, send a new reply so the user\'s device pings.',
       '',
@@ -1056,21 +1056,23 @@ bot.on('message:voice', async ctx => {
     file_id: voice.file_id,
     size: voice.file_size,
     mime: voice.mime_type,
+    duration: voice.duration,
   })
 })
 
 bot.on('message:audio', async ctx => {
   const audio = ctx.message.audio
-  const name = safeName(audio.file_name)
+  const name = safeName(audio.file_name ?? audio.title)
   const text = ctx.message.caption
     ? expandTextLinks(ctx.message.caption, ctx.message.caption_entities)
-    : `(audio: ${safeName(audio.title) ?? name ?? 'audio'})`
+    : `(audio: ${name ?? 'audio'})`
   await handleInbound(ctx, text, undefined, {
     kind: 'audio',
     file_id: audio.file_id,
     size: audio.file_size,
     mime: audio.mime_type,
     name,
+    duration: audio.duration,
   })
 })
 
@@ -1085,6 +1087,7 @@ bot.on('message:video', async ctx => {
     size: video.file_size,
     mime: video.mime_type,
     name: safeName(video.file_name),
+    duration: video.duration,
   })
 })
 
@@ -1094,6 +1097,7 @@ bot.on('message:video_note', async ctx => {
     kind: 'video_note',
     file_id: vn.file_id,
     size: vn.file_size,
+    duration: vn.duration,
   })
 })
 
@@ -1113,6 +1117,7 @@ type AttachmentMeta = {
   size?: number
   mime?: string
   name?: string
+  duration?: number
 }
 
 // Filenames and titles are uploader-controlled. They land inside the <channel>
@@ -1238,11 +1243,13 @@ async function handleInbound(
       const title = c?.title ?? c?.first_name ?? ''
       if (title) forwardMeta.forward_from_chat = safeName(title) ?? ''
       if (c?.id != null) forwardMeta.forward_from_chat_id = String(c.id)
+      if (c?.username) forwardMeta.forward_from_chat_username = safeName(c.username) ?? ''
       if (fwd.author_signature) forwardMeta.forward_author = safeName(fwd.author_signature) ?? ''
     } else if (fwd.type === 'channel') {
       const c: any = fwd.chat
       if (c?.title) forwardMeta.forward_from_chat = safeName(c.title) ?? ''
       if (c?.id != null) forwardMeta.forward_from_chat_id = String(c.id)
+      if (c?.username) forwardMeta.forward_from_chat_username = safeName(c.username) ?? ''
       forwardMeta.forward_message_id = String(fwd.message_id)
       if (fwd.author_signature) forwardMeta.forward_author = safeName(fwd.author_signature) ?? ''
     }
@@ -1276,33 +1283,46 @@ async function handleInbound(
     const rtText = expandTextLinks(rtRaw, rep.entities ?? rep.caption_entities)
     if (rtText) replyMeta.reply_to_text = safeName(rtText.slice(0, 500)) ?? ''
     // B: attachments — give Claude a file_id it can download later
+    let repAtt: any
     if (Array.isArray(rep.photo) && rep.photo.length > 0) {
       const best = rep.photo[rep.photo.length - 1]
       replyMeta.reply_to_attachment_kind = 'photo'
       if (best?.file_id) replyMeta.reply_to_attachment_file_id = String(best.file_id)
+      repAtt = best
     } else if (rep.document?.file_id) {
       replyMeta.reply_to_attachment_kind = 'document'
       replyMeta.reply_to_attachment_file_id = String(rep.document.file_id)
-      if (rep.document.mime_type) replyMeta.reply_to_attachment_mime = String(rep.document.mime_type)
       if (rep.document.file_name) replyMeta.reply_to_attachment_name = safeName(rep.document.file_name) ?? ''
+      repAtt = rep.document
     } else if (rep.video?.file_id) {
       replyMeta.reply_to_attachment_kind = 'video'
       replyMeta.reply_to_attachment_file_id = String(rep.video.file_id)
       if (rep.video.file_name) replyMeta.reply_to_attachment_name = safeName(rep.video.file_name) ?? ''
+      repAtt = rep.video
     } else if (rep.voice?.file_id) {
       replyMeta.reply_to_attachment_kind = 'voice'
       replyMeta.reply_to_attachment_file_id = String(rep.voice.file_id)
+      repAtt = rep.voice
     } else if (rep.audio?.file_id) {
       replyMeta.reply_to_attachment_kind = 'audio'
       replyMeta.reply_to_attachment_file_id = String(rep.audio.file_id)
       const audioName = rep.audio.file_name ?? rep.audio.title
       if (audioName) replyMeta.reply_to_attachment_name = safeName(audioName) ?? ''
+      repAtt = rep.audio
     } else if (rep.video_note?.file_id) {
       replyMeta.reply_to_attachment_kind = 'video_note'
       replyMeta.reply_to_attachment_file_id = String(rep.video_note.file_id)
+      repAtt = rep.video_note
     } else if (rep.sticker?.file_id) {
       replyMeta.reply_to_attachment_kind = 'sticker'
       replyMeta.reply_to_attachment_file_id = String(rep.sticker.file_id)
+      repAtt = rep.sticker
+    }
+    // Common file metadata across attachment kinds — present only on some, emit when set.
+    if (repAtt) {
+      if (repAtt.mime_type) replyMeta.reply_to_attachment_mime = String(repAtt.mime_type)
+      if (repAtt.file_size != null) replyMeta.reply_to_attachment_size = String(repAtt.file_size)
+      if (repAtt.duration != null) replyMeta.reply_to_attachment_duration = String(repAtt.duration)
     }
     // Caption of the replied-to media message (only media carries `caption`;
     // text messages use `text`). Same 500-char cap + safeName as reply_to_text.
@@ -1328,11 +1348,13 @@ async function handleInbound(
         const title = c.title ?? c.first_name ?? ''
         if (title) replyMeta.reply_to_forward_from_chat = safeName(title) ?? ''
         if (c.id != null) replyMeta.reply_to_forward_from_chat_id = String(c.id)
+        if (c.username) replyMeta.reply_to_forward_from_chat_username = safeName(c.username) ?? ''
         if (rfwd.author_signature) replyMeta.reply_to_forward_author = safeName(rfwd.author_signature) ?? ''
       } else if (rfwd.type === 'channel' && rfwd.chat) {
         const c = rfwd.chat
         if (c.title) replyMeta.reply_to_forward_from_chat = safeName(c.title) ?? ''
         if (c.id != null) replyMeta.reply_to_forward_from_chat_id = String(c.id)
+        if (c.username) replyMeta.reply_to_forward_from_chat_username = safeName(c.username) ?? ''
         if (rfwd.message_id != null) replyMeta.reply_to_forward_message_id = String(rfwd.message_id)
         if (rfwd.author_signature) replyMeta.reply_to_forward_author = safeName(rfwd.author_signature) ?? ''
       }
@@ -1351,6 +1373,10 @@ async function handleInbound(
         user: from.username ?? String(from.id),
         user_id: String(from.id),
         ts: new Date((ctx.message?.date ?? 0) * 1000).toISOString(),
+        // Message-level fields Telegram sets only on some messages.
+        ...(ctx.message?.edit_date ? { edit_date: new Date(ctx.message.edit_date * 1000).toISOString() } : {}),
+        ...(ctx.message?.media_group_id ? { media_group_id: String(ctx.message.media_group_id) } : {}),
+        ...(ctx.message?.has_protected_content ? { has_protected_content: 'true' } : {}),
         ...(imagePath ? { image_path: imagePath } : {}),
         ...(attachment ? {
           attachment_kind: attachment.kind,
@@ -1358,6 +1384,7 @@ async function handleInbound(
           ...(attachment.size != null ? { attachment_size: String(attachment.size) } : {}),
           ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
           ...(attachment.name ? { attachment_name: attachment.name } : {}),
+          ...(attachment.duration != null ? { attachment_duration: String(attachment.duration) } : {}),
         } : {}),
         ...forwardMeta,
         ...replyMeta,
