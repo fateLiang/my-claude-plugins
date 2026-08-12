@@ -1,0 +1,10 @@
+{
+  "name": "guanling",
+  "description": "關令 — a task tool that refuses",
+  "version": "2.10.0",
+  "keywords": [
+    "tasks",
+    "productivity",
+    "refusal"
+  ]
+}

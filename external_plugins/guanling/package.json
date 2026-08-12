@@ -1,0 +1,44 @@
+{
+  "name": "guanling",
+  "version": "2.10.0",
+  "mcpName": "io.github.fateLiang/guanling",
+  "description": "A task-management MCP server that refuses: no owner or next step, no ticket; five fixed states; a WIP limit that blocks instead of warning.",
+  "type": "module",
+  "main": "server.mjs",
+  "bin": {
+    "guanling": "server.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "http.mjs",
+    "nag.mjs",
+    "store-path.mjs",
+    "README.md",
+    "LICENSE",
+    "selftest.mjs"
+  ],
+  "scripts": {
+    "test": "node selftest.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "tasks",
+    "task-management",
+    "wip-limit",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fateLiang/guanling.git"
+  },
+  "homepage": "https://github.com/fateLiang/guanling#readme",
+  "bugs": {
+    "url": "https://github.com/fateLiang/guanling/issues"
+  }
+}

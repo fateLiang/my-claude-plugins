@@ -11,6 +11,12 @@
       "description": "Telegram messaging bridge with built-in access control. Manage pairing, allowlists, and policy via /telegram:access.",
       "category": "productivity",
       "source": "./external_plugins/telegram"
+    },
+    {
+      "name": "guanling",
+      "description": "關令 — per-agent commitment tracker. WIP-limited: refuses tasks without an owner and a next step; being long means it is broken.",
+      "category": "productivity",
+      "source": "./external_plugins/guanling"
     }
   ]
 }
