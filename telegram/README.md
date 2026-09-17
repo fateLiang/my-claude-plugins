@@ -45,7 +45,7 @@ Add this fork's marketplace, then install the plugin:
 > Two catalog entries point at this same plugin: `telegram-durable` (use this one) and
 > `telegram` (the original entry, kept so existing installs don't break).
 > The plugin's own `plugin.json` name is `telegram`, and that is what supplies the
-> command prefix, so its commands are `/telegram:access` either way.
+> command prefix, so its commands are `/telegram-durable:access` either way.
 >
 > For step 4, pass the **entry you installed** — `plugin:telegram-durable@my-claude-plugins`.
 > Claude Code prints a channels notice at startup saying which servers inject into the
@@ -56,7 +56,7 @@ Add this fork's marketplace, then install the plugin:
 **3. Give the server the token.**
 
 ```
-/telegram:configure 123456789:AAHfiqksKZ8...
+/telegram-durable:configure 123456789:AAHfiqksKZ8...
 ```
 
 Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can also write that file by hand, or set the variable in your shell environment — shell takes precedence.
@@ -83,7 +83,7 @@ claude --dangerously-load-development-channels plugin:telegram-durable@my-claude
 With Claude Code running from the previous step, DM your bot on Telegram — it replies with a 6-character pairing code. If the bot doesn't respond, make sure your session is running with the channel flag from step 4. In your Claude Code session:
 
 ```
-/telegram:access pair <code>
+/telegram-durable:access pair <code>
 ```
 
 Your next DM reaches the assistant.
@@ -92,7 +92,7 @@ Your next DM reaches the assistant.
 
 **6. Lock it down.**
 
-Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram:access policy allowlist` directly.
+Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram-durable:access policy allowlist` directly.
 
 ## Access control
 

@@ -1,6 +1,6 @@
 {
-  "name": "telegram",
-  "description": "Telegram channel for Claude Code — messaging bridge with built-in access control. Durable inbound store so messages survive a disconnected session (replayed on restart with a structured replay flag), forward/reply attribution, the sender's highlighted quote, and ask_decision buttons. Manage pairing, allowlists, and policy via /telegram:access.",
+  "name": "telegram-durable",
+  "description": "Durable Telegram bridge for Claude Code: inbound messages are written to disk before they reach the session, and anything the session never received is replayed on the next start with its original timestamp and a structured replay flag — so a message sent while the session was down is not silently lost. Also surfaces the sender's highlighted quote (message.quote) as its own field, separate from the reply text, plus forward/reply attribution, text_link URLs, and tappable multiple-choice questions (ask_decision). Access control via /telegram-durable:access. Independent fork; not affiliated with or endorsed by Anthropic.",
   "version": "0.0.16",
   "keywords": [
     "telegram",
