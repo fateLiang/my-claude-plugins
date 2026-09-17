@@ -4,7 +4,7 @@ Connect a Telegram bot to your Claude Code with an MCP server.
 
 The MCP server logs into Telegram as a bot and provides tools to Claude to reply, react, or edit messages. When you message the bot, the server forwards the message to your Claude Code session.
 
-> **Unofficial fork** (`telegram-durable@fateliang-plugins`, repo [`fateLiang/telegram-durable`](https://github.com/fateLiang/telegram-durable)). Patched on top of Anthropic's official telegram plugin with:
+> **Unofficial fork** (`telegram-durable@roberts-world`, repo [`fateLiang/telegram-durable`](https://github.com/fateLiang/telegram-durable)). Patched on top of Anthropic's official telegram plugin with:
 >
 > - **A durable inbound store.** Every message is written to disk *before* it is handed to the session, and anything the session never received is replayed on the next start — with the original timestamp and a structured `replay` flag, so an automation can tell a three-day-old instruction from one just sent. Without this, a message that arrives while the session is down is gone with no sign at either end: Telegram deletes an update as soon as the poller advances its offset, which happens on read, not on delivery.
 > - **The sender's highlighted quote.** When you select part of a message and reply to it, `message.quote` carries the selected span (plus `is_manual` and `position`). It is a different field from `reply_to_message.text`, and the official plugin never reads it — so the selection you made to point at *one line* arrives as the truncated head of the whole message.
@@ -35,19 +35,19 @@ These are Claude Code commands — run `claude` to start a session first.
 Add this fork's marketplace, then install the plugin:
 ```
 /plugin marketplace add fateLiang/telegram-durable
-/plugin install telegram-durable@fateliang-plugins
+/plugin install telegram-durable@roberts-world
 /reload-plugins
 ```
 
 > **Three different names here, and they are not interchangeable.** The marketplace
-> registers itself as `fateliang-plugins` (the `name` in `marketplace.json`), *not* as
-> the repository name — so the install target is `<entry>@fateliang-plugins`.
+> registers itself as `roberts-world` (the `name` in `marketplace.json`), *not* as
+> the repository name — so the install target is `<entry>@roberts-world`.
 > Two catalog entries point at this same plugin: `telegram-durable` (use this one) and
 > `telegram` (the original entry, kept so existing installs don't break).
 > The plugin's own `plugin.json` name is `telegram`, and that is what supplies the
 > command prefix, so its commands are `/telegram-durable:access` either way.
 >
-> For step 4, pass the **entry you installed** — `plugin:telegram-durable@fateliang-plugins`.
+> For step 4, pass the **entry you installed** — `plugin:telegram-durable@roberts-world`.
 > Claude Code prints a channels notice at startup saying which servers inject into the
 > session, with a warning line if a plugin you named didn't register; if you see that
 > warning, try the other entry name. (This fork is only tested with the `telegram`
@@ -68,14 +68,14 @@ Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can a
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --dangerously-load-development-channels plugin:telegram-durable@fateliang-plugins
+claude --dangerously-load-development-channels plugin:telegram-durable@roberts-world
 ```
 
 > **Why `--dangerously-load-development-channels` and not `--channels`?** Plain `--channels` only loads channel plugins that are on the approved-channels allowlist (`allowedChannelPlugins` in managed/policy settings, or the built-in default — which lists Anthropic's official telegram, not this fork). A personal fork is rejected with *"not on the approved channels allowlist"*. `--dangerously-load-development-channels` is the supported mechanism for loading a non-allowlisted channel — that's the right path for this fork, not a workaround.
 >
-> If you'd rather use plain `--channels`, add the fork to the allowlist in managed/policy settings, then launch with `--channels plugin:telegram-durable@fateliang-plugins`:
+> If you'd rather use plain `--channels`, add the fork to the allowlist in managed/policy settings, then launch with `--channels plugin:telegram-durable@roberts-world`:
 > ```json
-> { "allowedChannelPlugins": [ { "plugin": "telegram-durable", "marketplace": "fateliang-plugins" } ] }
+> { "allowedChannelPlugins": [ { "plugin": "telegram-durable", "marketplace": "roberts-world" } ] }
 > ```
 
 **5. Pair.**

@@ -1,9 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "fateliang-plugins",
+  "name": "roberts-world",
   "description": "Personal plugin marketplace. Ships telegram-durable (a Telegram channel for Claude Code that stores inbound messages on disk before handing them to the session, and replays anything the session missed) and guanling (a per-agent commitment tracker). Independent; not affiliated with or endorsed by Anthropic.",
   "owner": {
-    "name": "fateLiang"
+    "name": "Robert 的世界"
   },
   "plugins": [
     {

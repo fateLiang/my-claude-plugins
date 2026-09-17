@@ -24,7 +24,7 @@ The first two patches were proposed upstream in [PR #1657](https://github.com/an
 
 ## Setup (maintainer reference)
 
-Switching a Claude Code installation from `telegram@claude-plugins-official` to `telegram@fateliang-plugins` requires a few steps. The fork is not on Anthropic's approved-channels ledger, so Claude Code rejects it unless launched with the development-channels bypass flag.
+Switching a Claude Code installation from `telegram@claude-plugins-official` to `telegram@roberts-world` requires a few steps. The fork is not on Anthropic's approved-channels ledger, so Claude Code rejects it unless launched with the development-channels bypass flag.
 
 ### 1. Register the marketplace
 
@@ -32,12 +32,12 @@ Inside Claude Code:
 
 ```
 /plugin marketplace add fateLiang/telegram-durable
-/plugin install telegram@fateliang-plugins
+/plugin install telegram@roberts-world
 /plugin uninstall telegram@claude-plugins-official
 /reload-plugins
 ```
 
-If `/plugin uninstall` fails or the CLI silently re-routes the install back to `claude-plugins-official` (a known quirk when both names exist at once), edit `~/.claude/plugins/installed_plugins.json` directly and remove the `telegram@claude-plugins-official` entry. The valid resulting state has only `telegram@fateliang-plugins` and points its `installPath` at `~/.claude/plugins/cache/fateliang-plugins/telegram/0.0.7`.
+If `/plugin uninstall` fails or the CLI silently re-routes the install back to `claude-plugins-official` (a known quirk when both names exist at once), edit `~/.claude/plugins/installed_plugins.json` directly and remove the `telegram@claude-plugins-official` entry. The valid resulting state has only `telegram@roberts-world` and points its `installPath` at `~/.claude/plugins/cache/roberts-world/telegram/0.0.7`.
 
 ### 2. Update each project's settings
 
@@ -46,7 +46,7 @@ Project-local `.claude/settings.json` and `.claude/settings.local.json` files ov
 ```jsonc
 {
   "enabledPlugins": {
-    "telegram@fateliang-plugins": true   // was: "telegram@claude-plugins-official": true
+    "telegram@roberts-world": true   // was: "telegram@claude-plugins-official": true
   }
 }
 ```
@@ -58,7 +58,7 @@ Preserve any `env.TELEGRAM_STATE_DIR` and other unrelated entries.
 ```bash
 claude \
   --dangerously-skip-permissions \
-  --dangerously-load-development-channels plugin:telegram@fateliang-plugins \
+  --dangerously-load-development-channels plugin:telegram@roberts-world \
   -c
 ```
 
@@ -68,7 +68,7 @@ The `--dangerously-load-development-channels` flag is a list — pass channel en
 
 Send a Telegram message containing an inline link, e.g. `[test](https://example.com/abc)`.
 
-The receiving Claude Code session should see `[test](https://example.com/abc)` in the channel content. If it sees only `test`, the patched plugin isn't loaded — re-check that `bun` is running from `~/.claude/plugins/cache/fateliang-plugins/telegram/0.0.7` (`ps -ef | grep bun.*telegram`) rather than from the upstream cache or marketplace dir.
+The receiving Claude Code session should see `[test](https://example.com/abc)` in the channel content. If it sees only `test`, the patched plugin isn't loaded — re-check that `bun` is running from `~/.claude/plugins/cache/roberts-world/telegram/0.0.7` (`ps -ef | grep bun.*telegram`) rather than from the upstream cache or marketplace dir.
 
 ## Use at your own risk
 
