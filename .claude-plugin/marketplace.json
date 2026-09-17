@@ -13,6 +13,12 @@
       "source": "./external_plugins/telegram"
     },
     {
+      "name": "telegram-durable",
+      "description": "Telegram channel for Claude Code with a durable inbound store: every message is written to disk before it is handed to the session, and anything the session never received is replayed on the next start with a structured replay flag and the original timestamp — so a disconnected or restarting session does not silently drop what you sent. Also surfaces the sender's highlighted quote (message.quote) separately from the reply text, forward/reply attribution, text_link URLs, and ask_decision buttons for multiple-choice questions. Built-in access control via /telegram:access.",
+      "category": "productivity",
+      "source": "./external_plugins/telegram"
+    },
+    {
       "name": "guanling",
       "description": "關令 — per-agent commitment tracker. WIP-limited: refuses tasks without an owner and a next step; being long means it is broken.",
       "category": "productivity",
