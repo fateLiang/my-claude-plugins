@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "telegram-durable",
-      "description": "Telegram channel for Claude Code with a durable inbound store: every message is written to disk before it is handed to the session, and anything the session never received is replayed on the next start with a structured replay flag and the original timestamp — so a disconnected or restarting session does not silently drop what you sent. Also surfaces the sender's highlighted quote (message.quote) separately from the reply text, forward/reply attribution, text_link URLs, and ask_decision buttons for multiple-choice questions. Built-in access control via /telegram:access.",
+      "description": "Durable Telegram bridge for Claude Code: inbound messages are written to disk before they reach the session, and anything the session never received is replayed on the next start with its original timestamp and a structured replay flag — so a message sent while the session was down is not silently lost. Also surfaces the sender's highlighted quote (message.quote) as its own field, separate from the reply text, plus forward/reply attribution, text_link URLs, and tappable multiple-choice questions (ask_decision). Access control via /telegram-durable:access. Independent fork; not affiliated with or endorsed by Anthropic.",
       "category": "productivity",
       "source": "./telegram"
     },
