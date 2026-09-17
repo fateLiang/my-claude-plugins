@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import { randomBytes } from 'crypto'
+import { recordInbound, markSurfaced, listUnsurfaced, replayMeta, prune } from './inbound-store'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname, sep } from 'path'
@@ -438,7 +439,7 @@ const mcp = new Server(
     instructions: [
       'The sender reads Telegram, not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches their chat.',
       '',
-      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path; attachment_kind / attachment_name / attachment_mime / attachment_size (bytes) / attachment_duration (seconds, for audio/video/voice) describe it when Telegram supplies them. Message-level: edit_date marks an edited message, media_group_id groups the parts of one album, has_protected_content="true" means forwarding/saving is disabled. If the tag has forwarded="true", the user forwarded someone else\'s message — original attribution lives in forward_type (user|hidden_user|chat|channel), forward_from_name / forward_from_chat / forward_from_chat_id / forward_from_chat_username / forward_from_id / forward_date / forward_message_id / forward_author / forward_from_username depending on origin type; treat the content as quoted from the forwarded source, not the forwarder\'s own words. If the tag has reply_to_message_id, the sender is replying to another message — reply_to_user / reply_to_username / reply_to_user_id / reply_to_date identify the original author, reply_to_text (≤500 chars) carries the text being replied to, reply_to_attachment_kind + reply_to_attachment_file_id give the file_id of any attachment on the replied-to message (call download_attachment to fetch), reply_to_attachment_name is that attachment\'s original filename (when it has one — documents/audio/video), reply_to_attachment_mime / reply_to_attachment_size / reply_to_attachment_duration describe it, and reply_to_attachment_caption is the replied-to media message\'s caption (when present), so you can tell which file was referenced without downloading it, and reply_to_forwarded="true" plus reply_to_forward_* fields appear when the replied-to message was itself a forward. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
+      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path; attachment_kind / attachment_name / attachment_mime / attachment_size (bytes) / attachment_duration (seconds, for audio/video/voice) describe it when Telegram supplies them. Message-level: edit_date marks an edited message, media_group_id groups the parts of one album, has_protected_content="true" means forwarding/saving is disabled. If the tag has forwarded="true", the user forwarded someone else\'s message — original attribution lives in forward_type (user|hidden_user|chat|channel), forward_from_name / forward_from_chat / forward_from_chat_id / forward_from_chat_username / forward_from_id / forward_date / forward_message_id / forward_author / forward_from_username depending on origin type; treat the content as quoted from the forwarded source, not the forwarder\'s own words. If the tag has reply_to_message_id, the sender is replying to another message — reply_to_user / reply_to_username / reply_to_user_id / reply_to_date identify the original author, reply_to_text (≤500 chars) carries the text being replied to, quote_text carries ONLY the part the sender manually highlighted when replying (quote_is_manual="true" when they selected it themselves, quote_position = offset in the original) — when quote_text is present treat it as WHICH PART they are pointing at and reply_to_text as the surrounding context; do not ignore it and ask them to paste it again, reply_to_attachment_kind + reply_to_attachment_file_id give the file_id of any attachment on the replied-to message (call download_attachment to fetch), reply_to_attachment_name is that attachment\'s original filename (when it has one — documents/audio/video), reply_to_attachment_mime / reply_to_attachment_size / reply_to_attachment_duration describe it, and reply_to_attachment_caption is the replied-to media message\'s caption (when present), so you can tell which file was referenced without downloading it, and reply_to_forwarded="true" plus reply_to_forward_* fields appear when the replied-to message was itself a forward. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
       '',
       'reply accepts file paths (files: ["/abs/path.png"]) for attachments. Use react to add emoji reactions, and edit_message for interim progress updates. Edits don\'t trigger push notifications — when a long task completes, send a new reply so the user\'s device pings.',
       '',
@@ -835,6 +836,28 @@ await mcp.connect(new StdioServerTransport())
     else if (d.answered && d.surfaced && d.ts < cutoff) { delete pendingDecisions[k]; dirty = true }
   }
   if (dirty) savePendingDecisions()
+}
+
+// #166 inbound loss-proof：把【落地了但沒成功交給 session】的訊息補送，並清掉 7 天前的。
+// 與上面那段是同一個拆法（answered/surfaced），只是受詞從「按鈕答案」換成「訊息本文」——
+// 那正是它原本漏掉的地方：機制早就在，射程停在第一個被想到的受詞上。
+{
+  const pending = listUnsurfaced(STATE_DIR)
+  for (const { name, rec } of pending) {
+    // 🔴 補送的是一則【指令】：三天前的「去做 X」浮出來時，與剛剛說的在畫面上一模一樣。
+    //    所以一律帶原始時間 + 結構化 replay 旗標（不是只在文字裡寫「[補送]」——
+    //    下一個寫自動化的人不會去 parse 人話）。
+    mcp.notification({
+      method: 'notifications/claude/channel',
+      params: { content: rec.content, meta: { ...rec.meta, ...replayMeta(rec) } },
+    }).then(
+      () => markSurfaced(STATE_DIR, name),
+      err => process.stderr.write(`telegram channel: replay failed (will retry next start): ${err}\n`),
+    )
+  }
+  if (pending.length) process.stderr.write(`telegram channel: replayed ${pending.length} undelivered inbound message(s)\n`)
+  const pruned = prune(STATE_DIR, 7)
+  if (pruned) process.stderr.write(`telegram channel: pruned ${pruned} inbound record(s) older than 7 days\n`)
 }
 
 // When Claude Code closes the MCP connection, stdin gets EOF. Without this
@@ -1264,6 +1287,22 @@ async function handleInbound(
   // Text is truncated to 500 chars — enough context without blowing up
   // the <channel> tag. All strings go through safeName() per the same
   // tag-injection concern as forward attribution below.
+  // 🔴 使用者【反白選取】的那一段：Bot API 的 `message.quote`（TextQuote：text/entities/position/is_manual），
+  //    與 `reply_to_message.text` 是【不同欄位】。文件逐字：「For replies that quote part of the original
+  //    message, the quoted part of the message.」
+  // 🩸 在此之前本檔一次都沒有讀它（全檔 `quote` 只出現在說明字串裡）⇒ 使用者選了三行、我們只拿到
+  //    被截斷的【整則開頭】⇒ 他只能再手動貼一次。Robert 2026-09-17 12:01 親自踩到，逐字：
+  //    「我反白的是這一段，這樣很不方便去跟奇門子說讓她改」（minecraft_casino 轉，我查 API 文件確認）。
+  // 📏 選取的那一段是使用者在一則長訊息裡【指出受詞】的唯一方式；丟掉它＝每次都要他重述已經指過的東西。
+  // ⚪ 刻意【不覆蓋】reply_to_text：片段＝受詞、全文＝脈絡，兩個都有用。
+  const q: any = (ctx.message as any)?.quote
+  const quoteMeta: Record<string, string> = {}
+  if (q && typeof q.text === 'string' && q.text) {
+    quoteMeta.quote_text = safeName(q.text.slice(0, 1024)) ?? ''
+    // is_manual 分得出「他自己選的」與「用戶端自動帶的」—— 前者才是他刻意指的那一段。
+    if (q.is_manual) quoteMeta.quote_is_manual = 'true'
+    if (typeof q.position === 'number') quoteMeta.quote_position = String(q.position)
+  }
   const rep: any = (ctx.message as any)?.reply_to_message
   const replyMeta: Record<string, string> = {}
   if (rep) {
@@ -1363,9 +1402,10 @@ async function handleInbound(
 
   // image_path goes in meta only — an in-content "[image attached — read: PATH]"
   // annotation is forgeable by any allowlisted sender typing that string.
-  mcp.notification({
-    method: 'notifications/claude/channel',
-    params: {
+  // 🔴 #166：先落地、再 surface、成功才標記。順序不可反 ——
+  //    poller 讀到就等於對 Telegram 簽收（offset 前進 ⇒ 伺服器端刪除），
+  //    所以「送出去之後才存」中間那個窗口，掉的是永久掉。
+  const _params = {
       content: text,
       meta: {
         chat_id,
@@ -1388,11 +1428,26 @@ async function handleInbound(
         } : {}),
         ...forwardMeta,
         ...replyMeta,
+        ...quoteMeta,
       },
-    },
-  }).catch(err => {
-    process.stderr.write(`telegram channel: failed to deliver inbound to Claude: ${err}\n`)
+  }
+  const _stored = recordInbound(STATE_DIR, {
+    update_id: (ctx as any)?.update?.update_id ?? null,
+    content: _params.content,
+    meta: _params.meta as Record<string, string>,
+    sent: (_params.meta as any).ts ?? new Date().toISOString(),
+    received: new Date().toISOString(),
+    surfaced: null,
   })
+  mcp.notification({ method: 'notifications/claude/channel', params: _params }).then(
+    // ⚠️ resolve 只代表【寫進 STDOUT】，不代表對面處理過 —— 這是目前拿得到最接近的訊號。
+    //    寧可標成已送而偶爾漏補，不要每次重啟都重放整批（補送的是指令，重放有代價）。
+    () => markSurfaced(STATE_DIR, _stored),
+    err => {
+      process.stderr.write(`telegram channel: failed to deliver inbound to Claude: ${err}\n`)
+      // 不標記 ⇒ surfaced 維持 null ⇒ 下次啟動補送
+    },
+  )
 }
 
 // Without this, any throw in a message handler stops polling permanently
