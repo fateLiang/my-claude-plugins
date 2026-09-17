@@ -12,12 +12,15 @@
 
 ## Why this fork exists
 
-Two small additions were prototyped against `external_plugins/telegram` for the maintainer's own Claude Code workflow:
+The `telegram` plugin here is a patched copy of Anthropic's, carrying additions made for the maintainer's own Claude Code workflow:
 
+- **A durable inbound store.** Each message is written to disk *before* it is handed to the session, and anything the session never received is replayed on the next start, with the original timestamp and a structured `replay` flag. Without this, a message that arrives while the session is down is gone with no sign at either end — Telegram deletes an update as soon as the poller advances its offset, which happens on read, not on delivery.
+- **The sender's highlighted quote.** Selecting part of a message and replying to it populates `message.quote` (text, `is_manual`, `position`) — a different field from `reply_to_message.text`, and one the upstream plugin does not read. Without it, a selection made to point at *one line* arrives as the truncated head of the whole message.
+- **`ask_decision`** — hand the user a multiple-choice question as tappable buttons; non-blocking, and loss-proof across a restart.
 - forward / reply attribution metadata on inbound messages
 - inline-hyperlink (`text_link`) URL surfacing so URLs hidden behind link labels survive into the agent's view
 
-`plugin.json` is bumped to `0.0.7` to mark divergence. The patches were proposed upstream in [PR #1657](https://github.com/anthropics/claude-plugins-official/pull/1657) but the upstream project does not accept external contributions, so the changes live here.
+The first two patches were proposed upstream in [PR #1657](https://github.com/anthropics/claude-plugins-official/pull/1657), but the upstream project does not accept external contributions, so the changes live here.
 
 ## Setup (maintainer reference)
 
@@ -81,8 +84,8 @@ A curated directory of high-quality plugins for Claude Code.
 
 ## Structure
 
-- **`/plugins`** - Internal plugins developed and maintained by Anthropic
-- **`/external_plugins`** - Third-party plugins from partners and the community
+- **`/telegram`** - the patched Telegram channel plugin (catalog entries `telegram-durable` and `telegram`)
+- **`/guanling`** - a per-agent commitment tracker that refuses a task without an owner and a next step
 
 ## Installation
 
