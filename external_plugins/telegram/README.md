@@ -4,7 +4,7 @@ Connect a Telegram bot to your Claude Code with an MCP server.
 
 The MCP server logs into Telegram as a bot and provides tools to Claude to reply, react, or edit messages. When you message the bot, the server forwards the message to your Claude Code session.
 
-> **Unofficial fork** (`telegram@my-claude-plugins`, repo [`fateLiang/my-claude-plugins`](https://github.com/fateLiang/my-claude-plugins)). Patched on top of Anthropic's official telegram plugin with: forward/reply attribution in the `<channel>` notification, and `text_link` URL surfacing. Not Anthropic-managed. Because it's not on the official approved-channels allowlist, it loads via `--dangerously-load-development-channels` (see step 4).
+> **Unofficial fork** (`telegram@my-claude-plugins`, repo [`fateLiang/telegram-durable`](https://github.com/fateLiang/telegram-durable)). Patched on top of Anthropic's official telegram plugin with: forward/reply attribution in the `<channel>` notification, and `text_link` URL surfacing. Not Anthropic-managed. Because it's not on the official approved-channels allowlist, it loads via `--dangerously-load-development-channels` (see step 4).
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ These are Claude Code commands — run `claude` to start a session first.
 
 Add this fork's marketplace, then install the plugin:
 ```
-/plugin marketplace add fateLiang/my-claude-plugins
+/plugin marketplace add fateLiang/telegram-durable
 /plugin install telegram@my-claude-plugins
 /reload-plugins
 ```

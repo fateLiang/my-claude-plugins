@@ -28,7 +28,7 @@ Switching a Claude Code installation from `telegram@claude-plugins-official` to 
 Inside Claude Code:
 
 ```
-/plugin marketplace add fateLiang/my-claude-plugins
+/plugin marketplace add fateLiang/telegram-durable
 /plugin install telegram@my-claude-plugins
 /plugin uninstall telegram@claude-plugins-official
 /reload-plugins

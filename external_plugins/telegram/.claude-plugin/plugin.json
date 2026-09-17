@@ -12,7 +12,7 @@
     "name": "fateLiang",
     "url": "https://github.com/fateLiang"
   },
-  "homepage": "https://github.com/fateLiang/my-claude-plugins/tree/main/external_plugins/telegram",
-  "repository": "https://github.com/fateLiang/my-claude-plugins",
+  "homepage": "https://github.com/fateLiang/telegram-durable/tree/main/external_plugins/telegram",
+  "repository": "https://github.com/fateLiang/telegram-durable",
   "license": "Apache-2.0"
 }
