@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "my-claude-plugins",
-  "description": "Personal fork of anthropics/claude-plugins-official with a patched telegram plugin (forward/reply attribution + text_link URL surfacing). Not Anthropic-managed.",
+  "name": "fateliang-plugins",
+  "description": "Personal plugin marketplace. Ships telegram-durable (a Telegram channel for Claude Code that stores inbound messages on disk before handing them to the session, and replays anything the session missed) and guanling (a per-agent commitment tracker). Independent; not affiliated with or endorsed by Anthropic.",
   "owner": {
     "name": "fateLiang"
   },
