@@ -4,7 +4,13 @@ Connect a Telegram bot to your Claude Code with an MCP server.
 
 The MCP server logs into Telegram as a bot and provides tools to Claude to reply, react, or edit messages. When you message the bot, the server forwards the message to your Claude Code session.
 
-> **Unofficial fork** (`telegram@my-claude-plugins`, repo [`fateLiang/telegram-durable`](https://github.com/fateLiang/telegram-durable)). Patched on top of Anthropic's official telegram plugin with: forward/reply attribution in the `<channel>` notification, and `text_link` URL surfacing. Not Anthropic-managed. Because it's not on the official approved-channels allowlist, it loads via `--dangerously-load-development-channels` (see step 4).
+> **Unofficial fork** (`telegram-durable@my-claude-plugins`, repo [`fateLiang/telegram-durable`](https://github.com/fateLiang/telegram-durable)). Patched on top of Anthropic's official telegram plugin with:
+>
+> - **A durable inbound store.** Every message is written to disk *before* it is handed to the session, and anything the session never received is replayed on the next start — with the original timestamp and a structured `replay` flag, so an automation can tell a three-day-old instruction from one just sent. Without this, a message that arrives while the session is down is gone with no sign at either end: Telegram deletes an update as soon as the poller advances its offset, which happens on read, not on delivery.
+> - **The sender's highlighted quote.** When you select part of a message and reply to it, `message.quote` carries the selected span (plus `is_manual` and `position`). It is a different field from `reply_to_message.text`, and the official plugin never reads it — so the selection you made to point at *one line* arrives as the truncated head of the whole message.
+> - Forward/reply attribution in the `<channel>` notification, `text_link` URL surfacing, and `ask_decision` buttons for multiple-choice questions.
+>
+> Not Anthropic-managed. Because it's not on the official approved-channels allowlist, it loads via `--dangerously-load-development-channels` (see step 4).
 
 ## Prerequisites
 
@@ -29,9 +35,23 @@ These are Claude Code commands — run `claude` to start a session first.
 Add this fork's marketplace, then install the plugin:
 ```
 /plugin marketplace add fateLiang/telegram-durable
-/plugin install telegram@my-claude-plugins
+/plugin install telegram-durable@my-claude-plugins
 /reload-plugins
 ```
+
+> **Three different names here, and they are not interchangeable.** The marketplace
+> registers itself as `my-claude-plugins` (the `name` in `marketplace.json`), *not* as
+> the repository name — so the install target is `<entry>@my-claude-plugins`.
+> Two catalog entries point at this same plugin: `telegram-durable` (use this one) and
+> `telegram` (the original entry, kept so existing installs don't break).
+> The plugin's own `plugin.json` name is `telegram`, and that is what supplies the
+> command prefix, so its commands are `/telegram:access` either way.
+>
+> For step 4, pass the **entry you installed** — `plugin:telegram-durable@my-claude-plugins`.
+> Claude Code prints a channels notice at startup saying which servers inject into the
+> session, with a warning line if a plugin you named didn't register; if you see that
+> warning, try the other entry name. (This fork is only tested with the `telegram`
+> entry, which is what its author runs.)
 
 **3. Give the server the token.**
 
@@ -48,14 +68,14 @@ Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can a
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --dangerously-load-development-channels plugin:telegram@my-claude-plugins
+claude --dangerously-load-development-channels plugin:telegram-durable@my-claude-plugins
 ```
 
 > **Why `--dangerously-load-development-channels` and not `--channels`?** Plain `--channels` only loads channel plugins that are on the approved-channels allowlist (`allowedChannelPlugins` in managed/policy settings, or the built-in default — which lists Anthropic's official telegram, not this fork). A personal fork is rejected with *"not on the approved channels allowlist"*. `--dangerously-load-development-channels` is the supported mechanism for loading a non-allowlisted channel — that's the right path for this fork, not a workaround.
 >
-> If you'd rather use plain `--channels`, add the fork to the allowlist in managed/policy settings, then launch with `--channels plugin:telegram@my-claude-plugins`:
+> If you'd rather use plain `--channels`, add the fork to the allowlist in managed/policy settings, then launch with `--channels plugin:telegram-durable@my-claude-plugins`:
 > ```json
-> { "allowedChannelPlugins": [ { "plugin": "telegram", "marketplace": "my-claude-plugins" } ] }
+> { "allowedChannelPlugins": [ { "plugin": "telegram-durable", "marketplace": "my-claude-plugins" } ] }
 > ```
 
 **5. Pair.**
