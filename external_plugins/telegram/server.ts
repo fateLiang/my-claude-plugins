@@ -29,7 +29,7 @@ const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const ENV_FILE = join(STATE_DIR, '.env')
 
-// --- Poller death diagnosis (added 2026-05-29 for 賈維斯 disconnect) -----------
+// --- Poller death diagnosis ---------------------------------------------------
 // Tee every stderr line + the exit code into $STATE_DIR/poller.log so a poller
 // that dies leaves evidence (409 / polling errors / unhandled rejection /
 // "shutting down" / exit code) instead of vanishing silently. The MCP transport
@@ -103,7 +103,7 @@ writeFileSync(PID_FILE, String(process.pid))
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
 //
-// ⚠️ EPIPE self-devour guard (2026-06-12, sofir incident): once the host (claude)
+// ⚠️ EPIPE self-devour guard: once the host (claude)
 // closes our stdio pipes — orphaned poller after a session dies, duplicate session
 // replaced us, etc. — EVERY write throws EPIPE, and a handler that responds to the
 // error by writing to stderr throws EPIPE again: an infinite loop that flooded
@@ -453,13 +453,13 @@ const mcp = new Server(
 // Stores full permission details for "See more" expansion keyed by request_id.
 const pendingPermissions = new Map<string, { tool_name: string; description: string; input_preview: string }>()
 
-// ── ask_decision（hades 作者 / 奇門子 審+合，2026-06-13）─────────────────────────
+// ── ask_decision ──────────────────────────────────────────────────────────────
 // 讓 agent 把「多選決策」丟給使用者的 Telegram、他點按鈕回答。非阻塞：tool 立刻返回，使用者點選後答案
-// 以一則 inbound（notifications/claude/channel）surface 回「本 session」——plugin↔agent 是 1:1、不碰 pangu
-// bus、無跨 agent routing。session-down：Telegram getUpdates offset buffer(~24h) 重啟後補送 callback；
+// 以一則 inbound（notifications/claude/channel）surface 回「本 session」——plugin↔agent 是 1:1、
+// 無跨 agent routing。session-down：Telegram getUpdates offset buffer(~24h) 重啟後補送 callback；
 // pendingDecisions persist 到 STATE_DIR 檔，重啟後仍能驗證/格式化 + answered 去重（at-least-once、once-only）。
 const DECISIONS_FILE = join(STATE_DIR, 'pending-decisions.json')
-// answered = Robert 點了（防雙 tap）；surfaced = agent 真的收到答案（notification 成功）。拆兩個是為了
+// answered = 使用者點了（防雙 tap）；surfaced = agent 真的收到答案（notification 成功）。拆兩個是為了
 // loss-proof：notification 失敗(罕見 transport hiccup)時 answered=true 但 surfaced=false → startup 補送
 //（at-least-once，loss 比 dup 糟——全 session 投遞原則）。chosenIdx 記下選了哪個，供 startup 重送。
 type PendingDecision = { request_id: string; question: string; options: string[]; chat_id: string; answered: boolean; surfaced: boolean; chosenIdx?: number; ts: number }
@@ -539,7 +539,7 @@ async function handleDecisionCallback(ctx: Context): Promise<boolean> {
   await surfaceDecisionAnswer(d) // 成功才標 surfaced；失敗留 false → startup 補送
   return true
 }
-// surface 答案成一則 inbound 給「本 session」（套件現有 channel 機制、無 pangu bus）。**成功才標 surfaced**——
+// surface 答案成一則 inbound 給「本 session」（走套件現有的 channel 機制）。**成功才標 surfaced**——
 // notification 失敗(罕見 transport hiccup)→ surfaced 留 false、下次 startup 補送，避免 loss（loss 比 dup 糟）。
 async function surfaceDecisionAnswer(d: PendingDecision): Promise<void> {
   if (d.chosenIdx == null || !(d.chosenIdx >= 0 && d.chosenIdx < d.options.length)) return
@@ -825,7 +825,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
 await mcp.connect(new StdioServerTransport())
 
-// ask_decision loss-proof：補送「Robert 已點但當時 notification 失敗（surfaced=false）」的決策——session
+// ask_decision loss-proof：補送「使用者已點但當時 notification 失敗（surfaced=false）」的決策——session
 // down 時點的 tap 由 Telegram getUpdates buffer 補；notification 當下失敗的由這裡 startup 補（at-least-once）。
 // 另清掉 7 天前已完成（answered+surfaced）的，避免 pending-decisions.json 無限長。
 {
@@ -838,7 +838,7 @@ await mcp.connect(new StdioServerTransport())
   if (dirty) savePendingDecisions()
 }
 
-// #166 inbound loss-proof：把【落地了但沒成功交給 session】的訊息補送，並清掉 7 天前的。
+// inbound loss-proof：把【落地了但沒成功交給 session】的訊息補送，並清掉 7 天前的。
 // 與上面那段是同一個拆法（answered/surfaced），只是受詞從「按鈕答案」換成「訊息本文」——
 // 那正是它原本漏掉的地方：機制早就在，射程停在第一個被想到的受詞上。
 {
@@ -1291,8 +1291,7 @@ async function handleInbound(
   //    與 `reply_to_message.text` 是【不同欄位】。文件逐字：「For replies that quote part of the original
   //    message, the quoted part of the message.」
   // 🩸 在此之前本檔一次都沒有讀它（全檔 `quote` 只出現在說明字串裡）⇒ 使用者選了三行、我們只拿到
-  //    被截斷的【整則開頭】⇒ 他只能再手動貼一次。Robert 2026-09-17 12:01 親自踩到，逐字：
-  //    「我反白的是這一段，這樣很不方便去跟奇門子說讓她改」（minecraft_casino 轉，我查 API 文件確認）。
+  //    被截斷的【整則開頭】⇒ 他只能再手動貼一次。
   // 📏 選取的那一段是使用者在一則長訊息裡【指出受詞】的唯一方式；丟掉它＝每次都要他重述已經指過的東西。
   // ⚪ 刻意【不覆蓋】reply_to_text：片段＝受詞、全文＝脈絡，兩個都有用。
   const q: any = (ctx.message as any)?.quote
@@ -1402,7 +1401,7 @@ async function handleInbound(
 
   // image_path goes in meta only — an in-content "[image attached — read: PATH]"
   // annotation is forgeable by any allowlisted sender typing that string.
-  // 🔴 #166：先落地、再 surface、成功才標記。順序不可反 ——
+  // 🔴 先落地、再 surface、成功才標記。順序不可反 ——
   //    poller 讀到就等於對 Telegram 簽收（offset 前進 ⇒ 伺服器端刪除），
   //    所以「送出去之後才存」中間那個窗口，掉的是永久掉。
   const _params = {

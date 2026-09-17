@@ -1,7 +1,7 @@
 /**
  * inbound-store.ts — 收到的訊息【先落地，再送給 session】。
  *
- * WHY（關令 #166 / 黑帝斯 #138，Robert 2026-09-17「叫他快」）：
+ * WHY：
  * 在此之前這個 plugin **對訊息本文沒有任何落地路徑** —— 全檔的 writeFileSync 只有
  * poller.log（lifecycle）、bot.pid、access.json、pending-decisions.json，以及 inbox/ 的附件。
  * 文字進來 → 直接 `mcp.notification` 丟給 session → 沒了。session 不在（MCP 斷、plugin 重啟中）
@@ -22,8 +22,8 @@
  *    對 agent 而言與剛剛說的一模一樣。所以補送一律帶原始時間 ＋ **結構化的 replay 標記**
  *    （不是只在文字裡寫「[補送]」——下一個寫自動化的人不會去 parse 人類可讀的字串）。
  *
- * 保留 7 天（Robert 2026-09-17「就都七天啊」）。
- * ⚠️ 本檔只負責【往後】的清理。回頭刪既有的檔案未經授權，不在這裡做。
+ * 保留 7 天。
+ * ⚠️ 本檔只負責【往後】的清理，不回頭刪既有的檔案。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
